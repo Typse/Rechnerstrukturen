@@ -1,5 +1,4 @@
 .section .data
-.syntax unified
 
 .equ RCGC_GPIO_R, 0x400FE608
 .equ RCGC_GPIO_PORT_A, 0x01
@@ -10,14 +9,9 @@
 .equ RCGC_GPIO_PORT_F, 0x20
 
 .equ GPIO_PORT_F_DATA_R, 0x400253FC
-.equ GPIO_PORT_F_DEN_R,  0x4002551C
-.equ GPIO_PORT_F_DIR_R,  0x40025400
-.equ GPIO_PORT_F_PUR_R,  0x40025510
-
-.equ GPIO_PORT_D_DATA_R, 0x400253FC
-.equ GPIO_PORT_D_DEN_R,  0x4002551C
-.equ GPIO_PORT_D_DIR_R,  0x40025400
-.equ GPIO_PORT_D_PUR_R,  0x40025510
+.equ GPIO_PORT_F_DEN_R, 0x4002551C
+.equ GPIO_PORT_F_DIR_R, 0x40025400
+.equ GPIO_PORT_F_PUR_R, 0x40025510
 
 .equ PIN0, 0x01
 .equ PIN1, 0x02
@@ -33,37 +27,113 @@
 .global main
 .align
 
-main:   
-init_hardware:
-    bl init_hardware
+main:
+@ aktivieren der Clock für den Port F mit der Portmaske
+ldr r0, =RCGC_GPIO_R
+ldr r1, [r0]
+ldr r2, =RCGC_GPIO_PORT_F
+orr r1, r1, r2
+str r1, [r0]
 
-endless_loop:
-    b endless_loop
-    bl check_timer
+@ aktivieren von GPIO port F Digital Enable (DEN). Für PIN1, PIN2 und PIN3 aktiviert
+ldr r0, =GPIO_PORT_F_DEN_R
+ldr r1, [r0]
+ldr r2, =PIN1
+orr r1, r1, r2
+ldr r2, =PIN2
+orr r1, r1, r2
+ldr r2, =PIN3
+orr r1, r1, r2
+ldr r2, =PIN4
+orr r1, r1, r2
+str r1, [r0]
 
-    // Lese den Zustand des Tasters
-    ldr r0, []   // Lese den GPIO-Port, an den der Taster angeschlossen ist
-    ands r0, r0, #SW1_MASK // Wende Maske an, um den Tasterzustand zu isolieren
-    beq handle_btn_not_pressed // Wenn der Taster nicht gedrückt ist, gehe zu handle_btn_not_pressed
+@ aktivieren von GPIO Port F (DIR)
+ldr r0, =GPIO_PORT_F_DIR_R
+ldr r1, [r0]
+ldr r2, =PIN1
+orr r1, r1, r2
+ldr r2, =PIN2
+orr r1, r1, r2
+ldr r2, =PIN3
+orr r1, r1, r2
+ldr r2, =PIN4
+bic r1, r1, r2 @ button muss auf 0 gesetzt werden für den input
+str r1, [r0]
 
-handle_btn_not_pressed:
+@ aktivieren von GPIO port f (PUR) nur button braucht PUR
+ldr r0, =GPIO_PORT_F_PUR_R
+ldr r1, [r0]
+ldr r2, =PIN4
+orr r1, r1, r2
+str r1, [r0]
 
-    lsr r7, r7, #1
-    bcs clear_bit
-    bl set_LED_white
+@ write something to r7
+mov r7, #0x1
 
-handle_btn_pressed:
-    lsl r7, r7, #1
-    bcs set_bit
-    bl set_LED_blue
-    b endless_loop
+@ laden den Wert vom Knopf und verlgeichen ihn mit 1 und wenn er 1 ist gehen wir in den branch pressed wenn 0 dann notpressed
+name:
+ldr r0, =GPIO_PORT_F_DATA_R
+ldr r1, [r0]
+ldr r2, =PIN4
+and r1, r2, r1
+cmp r1, r2
+bne pressed
+beq notpressed
 
-set_bit:
-    or r7 , r7, #0x80000000
-    b endless_loop
 
-clear_bit:
-    orr r7, r7, #0x00000001
-    b endless_loop
+notpressed:
+@ LED Farbe auf grün setzen
+ldr r0, =GPIO_PORT_F_DATA_R
+ldr r1, [r0]
+mov r3, #0x0E
+bic r1, r1, r3
+ldr r2, =PIN3
+orr r1, r1, r2
+str r1, [r0]
+
+@ einmal nach links shiften
+
+ldr r6, =0x80000000
+cmp r7, r6
+beq left_shift_of
+lsl r7, r7, #1
+b delay
+
+left_shift_of:
+ldr r7, =0x1
+b name
+
+right_shift_of:
+ldr r7, =0x80000000
+b name
+
+pressed:
+@ LED Farbe auf rot setzen
+ldr r0, =GPIO_PORT_F_DATA_R
+ldr r1, [r0]
+mov r3, #0x0E @ maske für pins 1-3 (hex 14)
+bic r1, r1, r3 @ setzt pins 1-3 auf 0
+ldr r2, =PIN1
+orr r1, r1, r2
+str r1, [r0]
+
+@ Shift auf right setzen
+
+cmp r7, #0x00000001
+beq right_shift_of
+lsr r7, r7, #1
+b delay
+
+delay:
+ldr r4, =24000
+ldr r5, =0x0000000
+delay_loop:
+add r5, #0x01
+cmp r4, r5
+bne delay_loop
+b name
+
+
 
 .end
