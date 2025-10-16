@@ -1,18 +1,13 @@
 .section .data
 .syntax unified
 
-.equ RCGC_GPIO_R, 0x400FE608
-.equ RCGC_GPIO_PORT_A, 0x01
-.equ RCGC_GPIO_PORT_B, 0x02
-.equ RCGC_GPIO_PORT_C, 0x04
-.equ RCGC_GPIO_PORT_D, 0x08
-.equ RCGC_GPIO_PORT_E, 0x10
-.equ RCGC_GPIO_PORT_F, 0x20
+.equ RCGC_GPIO_R,        0x400FE608
+.equ RCGC_GPIO_PORT_F,   0x20
 
 .equ GPIO_PORT_F_DATA_R, 0x400253FC
-.equ GPIO_PORT_F_DEN_R, 0x4002551C
-.equ GPIO_PORT_F_DIR_R, 0x40025400
-.equ GPIO_PORT_F_PUR_R, 0x40025510
+.equ GPIO_PORT_F_DEN_R,  0x4002551C
+.equ GPIO_PORT_F_DIR_R,  0x40025400
+.equ GPIO_PORT_F_PUR_R,  0x40025510
 
 .equ PIN0, 0x01
 .equ PIN1, 0x02
@@ -22,130 +17,213 @@
 .equ PIN5, 0x20
 .equ PIN6, 0x40
 .equ PIN7, 0x80
-.equ ALL_PINS, 0xFF
+
+.equ LED_RGB_MASK, 0x0E
+.equ LED_WHITE,    0x0E
+.equ LED_OFF,      0x00
+.equ BUTTON_SW1,   PIN4
+
+.equ DELAY_COUNT,  16000000
+
+@ Reserve a word for debugging so the rotating bit pattern can be
+@ inspected easily in the memory window of the debugger.
+rotating_bit_snapshot:
+    .word 0
+
+led_state_snapshot:
+    .word 0
 
 .section .text
 .global main
 .align
 
+@ ---------------------------------------------------------------------------
+@ main -> enable clock, configure GPIO, then enter the endless control loop.
+@ ---------------------------------------------------------------------------
 main:
-@ aktivieren der Clock für den Port F mit der Portmaske
-ldr r0, =RCGC_GPIO_R
-ldr r1, [r0]
-ldr r2, =RCGC_GPIO_PORT_F
-orr r1, r1, r2
-str r1, [r0]
+    bl enable_gpio_port_f
+    bl init_gpio_port_f
+    bl preload_runtime_constants
 
-@ aktivieren von GPIO port F Digital Enable (DEN). Für PIN1, PIN2 und PIN3 aktiviert
-ldr r0, =GPIO_PORT_F_DEN_R
-ldr r1, [r0]
-ldr r2, =PIN1
-orr r1, r1, r2 @ Value = 1 : Digitale Funktion des PINs wird aktiviert
-ldr r2, =PIN2
-orr r1, r1, r2 @ Value = 1 : Digitale Funktion des PINs wird aktiviert
-ldr r2, =PIN3
-orr r1, r1, r2 @ Value = 1 : Digitale Funktion des PINs wird aktiviert
-ldr r2, =PIN4
-orr r1, r1, r2 @ Value = 1 : Digitale Funktion des PINs wird aktiviert
-str r1, [r0]
+    b endless_loop
 
-@ aktivieren von GPIO Port F (DIR) 
-ldr r0, =GPIO_PORT_F_DIR_R
-ldr r1, [r0]
-ldr r2, =PIN1
-orr r1, r1, r2 @ Value = 1 : Corresponding pin is an output.
-ldr r2, =PIN2
-orr r1, r1, r2 @ Value = 1 : Corresponding pin is an output.
-ldr r2, =PIN3
-orr r1, r1, r2 @ Value = 1 : Corresponding pin is an output.
-ldr r2, =PIN4
-bic r1, r1, r2 @ PIN4 / button muss auf 0 gesetzt werden für den input
-str r1, [r0]
+@ ---------------------------------------------------------------------------
+@ enable_gpio_port_f
+@ Enables the AHB clock supply for Port F by setting bit 5 in RCGC GPIO
+@ without touching any other port clock configuration bits.
+@ ---------------------------------------------------------------------------
+enable_gpio_port_f:
+    ldr r0, =RCGC_GPIO_R          @ load address of clock gating register
+    ldr r1, [r0]                  @ fetch current register content
+    movs r2, #RCGC_GPIO_PORT_F    @ bit mask for Port F clock gate
+    orr r1, r1, r2                @ set the Port F bit (boolean OR)
+    str r1, [r0]                  @ write back without disturbing other bits
 
-@ aktivieren von GPIO port f (PUR) 
-@ nur button braucht PUR
-ldr r0, =GPIO_PORT_F_PUR_R
-ldr r1, [r0]
-ldr r2, =PIN4
-orr r1, r1, r2 @ Pull-UP Widerstand wird aktiviert, weil Wert 1
-str r1, [r0]
+    @ A few NOPs to allow the peripheral clock to stabilize before we touch
+    @ the port registers.
+    nop
+    nop
+    nop
+    bx lr
 
-@ write something to r7
-mov r7, #0x1 @ zustand
-b delay
+@ ---------------------------------------------------------------------------
+@ init_gpio_port_f
+@ Configures the RGB LED pins (PF1..PF3) as digital outputs and enables the
+@ internal pull-up on PF4 so that SW1 reads logic high when released.
+@ All configuration is done with boolean operations to preserve unrelated bits.
+@ ---------------------------------------------------------------------------
+init_gpio_port_f:
+    ldr r0, =GPIO_PORT_F_DEN_R    @ Digital enable register address
+    ldr r1, [r0]
+    movs r2, #LED_RGB_MASK
+    movs r3, #BUTTON_SW1
+    orr r2, r2, r3
+    orr r1, r1, r2                @ enable digital function on PF1..PF4
+    str r1, [r0]
 
-@ laden den Wert vom Knopf und verlgeichen ihn mit 1 und wenn er 1 ist gehen wir in den branch pressed wenn 0 dann notpressed
-loop:
-ldr r0, =GPIO_PORT_F_DATA_R @ 
-ldr r1, [r0]
-ldr r2, =PIN4
-and r1, r2, r1
-cmp r1, r2
-bne pressed
-b notpressed
+    ldr r0, =GPIO_PORT_F_DIR_R    @ Direction register address
+    ldr r1, [r0]
+    movs r2, #LED_RGB_MASK        @ LED pins shall be outputs
+    orr r1, r1, r2
+    bic r1, r1, #BUTTON_SW1       @ SW1 shall remain input -> clear the bit
+    str r1, [r0]
 
+    ldr r0, =GPIO_PORT_F_PUR_R    @ Pull-up resistor configuration
+    ldr r1, [r0]
+    movs r2, #BUTTON_SW1
+    orr r1, r1, r2                @ activate pull-up on PF4
+    str r1, [r0]
 
-notpressed:
-@ LED Farbe auf weiß setzen
-ldr r0, =GPIO_PORT_F_DATA_R
-ldr r1, [r0]
-mov r3, #0x0E @ maske für pins 1-3 (hex 14)
-bic r1, r1, r3 @ setzt pins 1-3 auf 0
-mov r2, #0x0E @ aktiviere 
-orr r1, r1, r2
-str r1, [r0]
+    bx lr
 
-@ einmal nach links shiften
-ldr r6, =0x10000000
-cmp r7, r6
-beq left_shift_of
+@ ---------------------------------------------------------------------------
+@ preload_runtime_constants
+@ Stores the frequently used addresses and masks in callee-saved registers so
+@ the endless loop can run without repeatedly loading literal constants.
+@ ---------------------------------------------------------------------------
+preload_runtime_constants:
+    ldr r4, =GPIO_PORT_F_DATA_R   @ r4 -> Port F data register (masked)
+    movs r5, #LED_RGB_MASK        @ r5 -> mask for the RGB LED pins
+    movs r6, #BUTTON_SW1          @ r6 -> mask for SW1 (PF4)
+    movs r7, #PIN0                @ r7 -> rotating bit starts at LSB position
 
+    ldr r0, =rotating_bit_snapshot
+    str r7, [r0]                  @ store initial pattern for debugging
 
-left_shift_of:
-cmp r7, 0x10000000
-beq set_bit_to_right
-lsl r7, r7, #4
-b loop
+    bx lr
 
-right_shift_of:
-cmp r7, 0x00000001
-beq set_bit_to_left
-lsr r7, r7, #4
-b loop
+@ ---------------------------------------------------------------------------
+@ endless_loop
+@ Implements the timer driven polling loop from the sequence diagram.
+@ ---------------------------------------------------------------------------
+endless_loop:
+    bl simple_delay               @ blocks for roughly 1 second
+    bl read_button_state          @ r0 = 0 (pressed) or 1 (released)
+    cmp r0, #0
+    beq handle_btn_pressed
 
-set_bit_to_left:
-ldr r7, =0x10000000
-b loop
+handle_btn_not_pressed:
+    bl rotate_left_with_wrap      @ r7 <<= 1 (wrap to bit0)
+    bl render_led_white
+    b  record_state_and_continue
 
-set_bit_to_right:
-ldr r7, =0x00000001
-b loop
+handle_btn_pressed:
+    bl rotate_right_with_wrap     @ r7 >>= 1 (wrap to bit7)
+    bl render_led_off
 
-pressed:
-@ LED Farbe auf blau setzen
-ldr r0, =GPIO_PORT_F_DATA_R
-ldr r1, [r0]
-mov r3, #0x0E @ maske für pins 1-3 (hex 14)
-bic r1, r1, r3 @ setzt pins 1-3 auf 0
-mov r2, #0x04 @ aktiviere
-orr r1, r1, r2
-str r1, [r0]
+record_state_and_continue:
+    bl store_debug_snapshots
+    b  endless_loop
 
-@ Shift auf right setzen
+@ ---------------------------------------------------------------------------
+@ simple_delay
+@ Busy-wait loop that consumes DELAY_COUNT iterations to create a visible
+@ pause (~1 second on a 16 MHz system clock). Adjust the constant if needed.
+@ ---------------------------------------------------------------------------
+simple_delay:
+    ldr r0, =DELAY_COUNT
+1:
+    subs r0, r0, #1
+    bne 1b
+    bx lr
 
+@ ---------------------------------------------------------------------------
+@ read_button_state
+@ Reads PF4 via the masked data register. Because of the pull-up, the input
+@ is logic high when the button is NOT pressed. Returns:
+@   r0 = 0 -> button pressed
+@   r0 = 1 -> button released
+@ ---------------------------------------------------------------------------
+read_button_state:
+    ldr r0, [r4]                  @ fetch masked port data
+    and r0, r0, r6                @ isolate PF4
+    cmp r0, #0
+    beq 4f
+    movs r0, #1                   @ high level -> released
+    bx lr
+4:
+    movs r0, #0                   @ low level -> pressed
+    bx lr
 
-b right_shift_of
+@ ---------------------------------------------------------------------------
+@ rotate_left_with_wrap
+@ Increments the single set bit in r7 towards the MSB. Once the bit reaches
+@ position 7 it wraps around to position 0 so the pattern stays cyclic.
+@ ---------------------------------------------------------------------------
+rotate_left_with_wrap:
+    cmp r7, #PIN7
+    beq 2f
+    lsls r7, r7, #1
+    bx lr
+2:
+    movs r7, #PIN0
+    bx lr
 
+@ ---------------------------------------------------------------------------
+@ rotate_right_with_wrap
+@ Decrements the set bit in r7 towards the LSB. When the bit is already at
+@ position 0 it wraps to position 7.
+@ ---------------------------------------------------------------------------
+rotate_right_with_wrap:
+    cmp r7, #PIN0
+    beq 3f
+    lsrs r7, r7, #1
+    bx lr
+3:
+    movs r7, #PIN7
+    bx lr
 
-delay:
-ldr r4, = 750000
-ldr r5, = 0x0000000
-delay_loop:
-add r5, #0x01
-cmp r4, r5
-bne delay_loop
-b loop
+@ ---------------------------------------------------------------------------
+@ render_led_white / render_led_off
+@ Update the RGB LED according to the current button state. The LED pins are
+@ cleared with a boolean AND (bic) before the desired value is applied, so we
+@ never disturb unrelated bits in the data register.
+@ ---------------------------------------------------------------------------
+render_led_white:
+    ldr r0, [r4]
+    bic r0, r0, r5
+    movs r1, #LED_WHITE
+    orr r0, r0, r1
+    str r0, [r4]
+    bx lr
 
+render_led_off:
+    ldr r0, [r4]
+    bic r0, r0, r5
+    str r0, [r4]
+    bx lr
 
+@ ---------------------------------------------------------------------------
+@ store_debug_snapshots
+@ Stores the current rotation pattern (r7) and the LED state into memory so
+@ they can be inspected in the debugger without having to halt execution.
+@ ---------------------------------------------------------------------------
+store_debug_snapshots:
+    ldr r0, =rotating_bit_snapshot
+    str r7, [r0]
 
-.end
+    ldr r0, =led_state_snapshot
+    ldr r1, [r4]
+    str r1, [r0]
+    bx lr
+@end of file

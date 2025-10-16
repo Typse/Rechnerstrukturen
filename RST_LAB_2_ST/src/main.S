@@ -60,10 +60,10 @@ ms:
 
 init_hardware:
 // Programm value in STRELOAD-Register
-//(160.000 in hex)
+// 16.000 für 1ms TICK
 ldr r0, =ST_RELOAD_R
 ldr r1, [r0]
-ldr r2, =16000 @ (1600 in hex)
+ldr r2, =15999
 str r2, [r0]
 
 
@@ -76,19 +76,18 @@ str r0, [r1]
 ldr r0, =ST_CTRL_R
 ldr r1, =ST_CTRL_ENABLE | BIT2
 ldr r2, [r0]
-// ldr r3, [r1] 
 orr r4, r2, r1
 
 str r4, [r0]
 
-//aktivieren der Clock für den Port F mit der Portmaske
+// aktivieren der Clock für den Port F mit der Portmaske
 ldr r0, =RCGC_GPIO_R
 ldr r1, [r0]
 ldr r2, =RCGC_GPIO_PORT_F
 orr r1, r1, r2
 str r1, [r0]
 
-//aktivieren von GPIO port F Digital Enable (DEN). Für PIN1, PIN2 und PIN3 aktiviert
+// aktivieren von GPIO port F Digital Enable (DEN). Für PIN1, PIN2 und PIN3 aktiviert
 ldr r0, =GPIO_PORT_F_DEN_R
 ldr r1, [r0]
 ldr r2, =BIT1
@@ -106,7 +105,7 @@ ldr r2, =BIT1
 orr r1, r1, r2
 ldr r2, =BIT2
 orr r1, r1, r2
-ldr r2, =BIT3
+ldr r2, =BIT3 
 orr r1, r1, r2
 str r1, [r0]
 
@@ -114,9 +113,9 @@ b main_loop
 
 .thumb_func
 sys_tick_handler:
-push {r0 - r12}
+push {r0 - r12} @ Speichert Register r0 bis r12 auf dem Stack
 
-// call this method every millisecond, dictated by the SysTick
+// call this method every millisecond by ST
 ldr r0, =ms
 ldr r1, [r0]
 add r1, r1, 1
@@ -138,20 +137,20 @@ ldr r1, =s
 ldr r3, [r1]
 add r2, r3, 1
 
-and r5, r2, 0x2
-cmp r5, 0x2
+and r5, r2, 0x1
+cmp r5, 0x1
 beq decrease_second
 str r2, [r1]
-pop {r0 - r12}
+pop {r0 - r12} @ Laedt Register r0 bis r12 aus dem Stack
 b main_loop
 
-//Wenn zwei sekunden erreicht sind, dann lampe anschalten
+// Wenn zwei sekunden erreicht sind, dann lampe anschalten
 decrease_second:
 mov r3, 0
 ldr r2, =s
 str r3, [r2]
 
-// hier logik für die lampen umschaltung
+// hier logik für die lampen
 ldr r0, =GPIO_PORT_F_DATA_R
 ldr r1, [r0]
 ldr r2, =LED_G
@@ -162,7 +161,6 @@ bne led_on
 
 led_on:
 mov r7, 1
-@ LED Farbe auf blau setzen
 ldr r0, =GPIO_PORT_F_DATA_R
 ldr r1, [r0]
 mov r3, #0x0E @ maske für pins 1-3 (hex 14)
@@ -175,7 +173,7 @@ b main_loop
 
 led_off:
 mov r7, 0
-@ LED Farbe auf weiß setzen
+@ LED OFF
 ldr r0, =GPIO_PORT_F_DATA_R
 ldr r1, [r0]
 mov r3, #0x0E
@@ -184,57 +182,59 @@ str r1, [r0]
 pop {r0 - r12}
 b main_loop
 
-main: // here the actual program starts; you might want to call init_hardware
-// extract the counter value to know if 1 ms is over
+main: 
 
 
 b init_hardware
 
-// mov r1, BIT5 | BIT10 // this is a example of how you can use bitwise or operations on the right side; this also works in equ directives
-
 main_loop:
-// Aufgabe 3
-b timeAufgabe
-// create an infinite loop here
+
+//A3
+b zeitmessung
+
+// infinite loop here
 ldr r1, =ST_CTRL_R
 ldr r0, [r1]
 ands r0, r0, ST_CTRL_COUNT
 bne sys_tick_handler
 
-
-
 b main_loop
 
-timeAufgabe:
-// Maschinenccode: 06 B4 06 B4
+
+// A2 A3
+zeitmessung:
+// A2
+// Maschinenccode: 06 B4 | 06 B4
 // Die Befehle sind im Maschinencode gleich
+mov r0, 0
 push {r1,r2}
 push {r2, r1}
 
 // zeit aufgabe
 
-// nop = 10 sysTick bei 10 Ausführungen
-nop
-nop
+// nop = 1 sysTick bei 1 Ausführungen
 nop
 
-// ldr r0, [sp] = 12 sysTick bei 10 Ausführungen
+// ldr r0, [sp] = 2 sysTick bei 1 Ausführungen
+ldr r0, [sp]
+ldr r0, [sp]
+ldr r0, [sp]
+ldr r0, [sp]
 ldr r0, [sp]
 
-// str r0, [sp, #-4] = 12 sysTick bei 10 Ausführungen
+// str r0, [sp, #-4] = 2 sysTick bei 1 Ausführungen
+str r0, [sp, #-4]
 str r0, [sp, #-4]
 
-// str r0, [sp, #-4]! = 12 sysTick bei 10 Ausführungen
+// str r0, [sp, #-4]! = 4 sysTick bei 1 Ausführungen
 str r0, [sp, #-4]!
 str r0, [sp, #-4]!
-str r0, [sp, #-4]!
-str r0, [sp, #-4]!
+
 
 // mul r0, r1, r1 = 2 sysTick
 ldr r1, =0x2
 mul r0, r1, r1
 
-// sdiv r0, r1, r1 = 2 sysTick
 ldr r1, =0x2
 sdiv r0, r1, r1
 
@@ -253,5 +253,5 @@ ldr r2, =0x1
 ldr r3, = 0x10
 push {r1, r2, r3}
 
-b timeAufgabe
+b zeitmessung
 .end
