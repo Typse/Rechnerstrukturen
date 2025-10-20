@@ -37,7 +37,7 @@
 .equ LED_OFF,      0x00 @clear all LED bits
 .equ BUTTON_SW1,   PIN4
 
-.equ DELAY_COUNT,  0x00186a00
+.equ DELAY_COUNT,  0x00186a00 // 160000hz
 
 .section .text
 .global main
