@@ -137,3 +137,67 @@ dly_loop:
     bne  dly_loop
     bx   lr
 .end
+
+
+
+// ...existing code...
+
+; endless_loop:
+;     ldr r0, =GPIO_PORT_F_DATA_R
+;     ldr r1, [r0]
+;     tst r1, #SW1
+;     bne handle_btn_not_pressed
+;     b   handle_btn_pressed
+
+; handle_btn_not_pressed:
+;     bl  delay
+    
+;     mov r0, #LED_WHITE              @ r0 = gewünschter LED-Zustand
+;     bl  set_led_if_changed          @ Setze LED (nur wenn anders)
+    
+;     lsl r7, r7, #1
+;     cmp r7, #0
+;     bne l_left_ok
+;     mov r7, #FIRST_BIT
+; l_left_ok:
+;     b   endless_loop
+
+; handle_btn_pressed:
+;     bl  delay
+    
+;     mov r0, #LED_OFF                @ r0 = LED aus
+;     bl  set_led_if_changed          @ Setze LED (nur wenn anders)
+    
+;     lsr r7, r7, #1
+;     cmp r7, #0
+;     bne l_right_ok
+;     movs r7, #LAST_BIT
+; l_right_ok:
+;     b   endless_loop
+
+; // Funktion: Setze LED nur wenn Zustand sich ändert
+; set_led_if_changed:
+;     push {r1, r2, r3, lr}
+    
+;     ldr r1, =GPIO_PORT_F_DATA_R
+;     ldr r2, [r1]
+;     and r3, r2, #(LED_R | LED_G | LED_B)
+    
+;     cmp r3, r0                      @ Vergleiche aktuell vs. gewünscht
+;     beq 1f                          @ Wenn gleich, überspringe
+    
+;     mvn r3, #(LED_R | LED_G | LED_B)
+;     and r2, r2, r3
+;     orr r2, r2, r0
+;     str r2, [r1]
+    
+; 1:  pop {r1, r2, r3, pc}
+
+; delay:
+;     ldr r2, =DELAY_COUNT
+; dly_loop:
+;     subs r2, r2, #1
+;     bne  dly_loop
+;     bx   lr
+
+; .end
