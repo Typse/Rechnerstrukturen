@@ -1,0 +1,241 @@
+.syntax unified
+.cpu cortex-m4
+.thumb
+
+/* ===== Bit-Makros ===== */
+.altmacro
+.macro define_bit a
+    .equ BIT\a, (1 << \a)
+.endm
+
+.set i, 0
+.rept 32
+    define_bit %i
+    .set i,i+1
+.endr
+
+/* ===== Peripherie-Adressen ===== */
+
+/* Run-mode Clock Gating Control */
+.equ RCGC_GPIO_R,        0x400FE608
+.equ RCGC_GPIO_PORT_F,   BIT5
+
+/* LED-Bits auf Port F */
+.equ LED_R,              BIT1
+.equ LED_G,              BIT3
+
+/* GPIO Port F Basis + Offsets (APB) */
+.equ GPIO_PORTF_BASE,    0x40025000
+.equ GPIO_DATA_R,        0x3FC
+.equ GPIO_DIR_R,         0x400
+.equ GPIO_DEN_R,         0x51C
+
+.equ GPIO_PORTF_DATA_R,  GPIO_PORTF_BASE + GPIO_DATA_R
+.equ GPIO_PORTF_DIR_R,   GPIO_PORTF_BASE + GPIO_DIR_R
+.equ GPIO_PORTF_DEN_R,   GPIO_PORTF_BASE + GPIO_DEN_R
+
+/* SysTick-Register (Cortex-M Kern) */
+.equ ST_BASE,            0xE000E000
+.equ ST_CTRL_R,          ST_BASE + 0x10
+.equ ST_RELOAD_R,        ST_BASE + 0x14
+.equ ST_CURRENT_R,       ST_BASE + 0x18
+
+.equ ST_CTRL_ENABLE,     BIT0
+.equ ST_CTRL_INTEN,      BIT1
+.equ ST_CTRL_CLK_SRC,    BIT2
+
+/* ===== Globale Variablen (Sekunden / Millisekunden) ===== */
+.section .data
+    .align 4
+s:  .word 0      /* Sekunden seit Start */
+ms: .word 0      /* Millisekunden in aktueller Sekunde */
+
+/* ===== Code-Sektion ===== */
+.section .text
+.align 2
+
+.global main
+.type   main, %function
+
+.global sys_tick_handler
+.type   sys_tick_handler, %function
+
+.global task2
+.type   task2, %function
+
+/* --------------------------------------------------------
+ * init_hardware:
+ *  - Clock für GPIOF
+ *  - LEDs (PF1, PF3) als Ausgang + digital enable
+ *  - LEDs aus
+ *  - SysTick auf 1 ms konfigurieren und aktivieren
+ * -------------------------------------------------------- */
+.thumb_func
+init_hardware:
+    /* 1. Clock für GPIO Port F aktivieren */
+    LDR r0, =RCGC_GPIO_R
+    LDR r1, [r0]
+    ORR r1, r1, #RCGC_GPIO_PORT_F
+    STR r1, [r0]
+
+    /* kurze „Stabilisierungspause“ */
+    NOP
+    NOP
+    NOP
+
+    /* 2. GPIOF DIR: LEDs als Ausgang */
+    LDR r0, =GPIO_PORTF_DIR_R
+    LDR r1, [r0]
+    ORR r1, r1, #LED_R | LED_G
+    STR r1, [r0]
+
+    /* 3. GPIOF DEN: digitale Funktion einschalten */
+    LDR r0, =GPIO_PORTF_DEN_R
+    LDR r1, [r0]
+    ORR r1, r1, #LED_R | LED_G
+    STR r1, [r0]
+
+    /* 4. LEDs AUS */
+    LDR r0, =GPIO_PORTF_DATA_R
+    LDR r1, [r0]
+    BIC r1, r1, #LED_R | LED_G
+    STR r1, [r0]
+
+    /* 5. SysTick Reload: 1 ms */
+    LDR r0, =ST_RELOAD_R
+    /* bei 16 MHz: 16000 Takte → 1 ms, Reload = 16000-1 = 15999 */
+    LDR r1, =15999
+    STR r1, [r0]
+
+    /* 6. SysTick Current auf 0 */
+    LDR r0, =ST_CURRENT_R
+    MOV r1, #0
+    STR r1, [r0]
+
+    /* 7. SysTick Control: Enable | Interrupt | System Clock */
+    LDR r0, =ST_CTRL_R
+    MOV r1, #(ST_CTRL_ENABLE | ST_CTRL_INTEN | ST_CTRL_CLK_SRC)
+    STR r1, [r0]
+
+    BX lr
+
+/* --------------------------------------------------------
+ * sys_tick_handler:
+ *  - wird von libopencm3-Vektortabelle referenziert
+ *  - hier kannst du Stack / PUSH im Debug beobachten
+ * -------------------------------------------------------- */
+.thumb_func
+sys_tick_handler:
+    /* Register sichern – Reihenfolge ist für die Aufgabe interessant */
+    /* Variante A: PUSH {r0, r1} */
+    /* Zum Experimentieren kannst du später PUSH {r1, r0} draus machen. */
+    PUSH {r0, r1, lr}
+
+    /* 1. ms++ */
+    LDR r0, =ms
+    LDR r1, [r0]
+    ADD r1, r1, #1
+    STR r1, [r0]
+
+    /* 2. Wenn ms != 1000 → raus */
+    CMP r1, #1000
+    BNE 1f
+
+    /* 3. s++ */
+    LDR r0, =s
+    LDR r1, [r0]
+    ADD r1, r1, #1
+    STR r1, [r0]
+
+    /* 4. LEDs toggeln (0.5 Hz) */
+    LDR r0, =GPIO_PORTF_DATA_R
+    LDR r1, [r0]
+    EOR r1, r1, #LED_R | LED_G
+    STR r1, [r0]
+
+    /* 5. ms = 0 */
+    LDR r0, =ms
+    MOV r1, #0
+    STR r1, [r0]
+
+1:
+    /* Register wiederherstellen */
+    POP {r0, r1, lr}
+    BX lr
+
+/* --------------------------------------------------------
+ * main:
+ *  - s und ms initialisieren
+ *  - Hardware + SysTick initialisieren
+ *  - einmal task2 für PUSH-Experiment aufrufen
+ *  - dann in main_loop warten
+ * -------------------------------------------------------- */
+.thumb_func
+main:
+    /* s = 0 */
+    LDR r0, =s
+    MOV r1, #0
+    STR r1, [r0]
+
+    /* ms = 0 */
+    LDR r0, =ms
+    MOV r1, #0
+    STR r1, [r0]
+
+    /* Hardware init */
+    BL init_hardware
+
+    /* Task 2 (Debug-Experiment) einmal ausführen */
+    BL task2
+
+main_loop:
+    WFI
+    B main_loop
+
+/* --------------------------------------------------------
+ * task2:
+ *  - gezieltes Experiment für die Praktikumsaufgabe:
+ *      * push {r1, r2}
+ *      * push {r2, r1}
+ *  - Stack im Memory-Reiter beobachten
+ *  - Maschinencode im Disassembly vergleichen
+ * -------------------------------------------------------- */
+.thumb_func
+task2:
+    /* Beispielwerte in r1 / r2 */
+    LDR r1, =0x11111111
+    LDR r2, =0x22222222
+
+    /* Breakpoint vor dem ersten PUSH:
+       - SP-Wert notieren
+       - Memory-Fenster auf Stack-Bereich öffnen */
+    BKPT #0
+
+    /* Variante 1: push {r1, r2} */
+    PUSH {r1, r2}
+
+    /* Breakpoint nach push {r1, r2}:
+       - SP ist um 8 gesunken
+       - [SP] = 0x11111111
+       - [SP+4] = 0x22222222 */
+    BKPT #0
+
+    /* Stack zurücksetzen */
+    POP {r1, r2}
+
+    LDR r2, =0x11111111
+    LDR r1, =0x22222222
+
+    /* Variante 2: push {r2, r1} */
+    PUSH {r2, r1}
+
+    /* Wieder SP und Speicher ansehen:
+       - du wirst sehen: Layout ist IDENTISCH */
+    BKPT #0
+
+    POP {r1, r2}
+
+    BX lr
+
+.end
+/* Ende der Datei */

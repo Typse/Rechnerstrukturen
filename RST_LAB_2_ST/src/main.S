@@ -69,31 +69,31 @@ init_hardware:
     // Für 1ms Tick: 16.000.000 Hz / 1000 = 16.000 Takte pro ms
     // RELOAD-Wert: 16.000 - 1 = 15.999 (da Counter bei 0 startet)
     
-    ldr r0, =ST_RELOAD_R        @ Lade Adresse des STRELOAD-Registers
-    ldr r2, =15999              @ Lade Reload-Wert für 1ms bei 16MHz
-    str r2, [r0]                @ Schreibe Reload-Wert
+    ldr r0, =ST_RELOAD_R        // Lade Adresse des STRELOAD-Registers
+    ldr r2, =15999              // Lade Reload-Wert für 1ms bei 16MHz
+    str r2, [r0]                // Schreibe Reload-Wert
     
     // Clear STCURRENT Register (Reset des Counters)
-    ldr r1, =ST_CURRENT_R       @ Lade Adresse des STCURRENT-Registers
-    mov r0, #0                  @ Wert 0 zum Löschen
-    str r0, [r1]                @ Schreibe 0 -> Counter wird zurückgesetzt
+    ldr r1, =ST_CURRENT_R       // Lade Adresse des STCURRENT-Registers
+    mov r0, #0                  // Wert 0 zum Löschen
+    str r0, [r1]                // Schreibe 0 -> Counter wird zurückgesetzt
     
     // Konfiguriere STCTRL Register
     // - BIT0 (ENABLE): SysTick aktivieren
     // - BIT2 (CLK_SRC): Systemtakt als Quelle (16 MHz)
     // - BIT1 (INTEN): Interrupt aktivieren
-    ldr r0, =ST_CTRL_R          @ Lade Adresse des STCTRL-Registers
-    ldr r1, =(ST_CTRL_ENABLE | ST_CTRL_CLK_SRC | ST_CTRL_INTEN) @ Enable + CLK_SRC + Interrupt
-    str r1, [r0]                @ Schreibe Konfiguration
+    ldr r0, =ST_CTRL_R          // Lade Adresse des STCTRL-Registers
+    ldr r1, =(ST_CTRL_ENABLE | ST_CTRL_CLK_SRC | ST_CTRL_INTEN) // Enable + CLK_SRC + Interrupt
+    str r1, [r0]                // Schreibe Konfiguration
     
     //-------------------------------------------------------------------------
     // GPIO Port F Konfiguration (für LEDs)
     //-------------------------------------------------------------------------
     // Aktiviere Clock für Port F
-    ldr r0, =RCGC_GPIO_R        @ Lade Adresse des RCGC GPIO Registers
-    ldr r1, [r0]                @ Lese aktuellen Wert
-    orr r1, r1, #RCGC_GPIO_PORT_F  @ Setze Bit für Port F
-    str r1, [r0]                @ Schreibe zurück
+    ldr r0, =RCGC_GPIO_R        // Lade Adresse des RCGC GPIO Registers
+    ldr r1, [r0]                // Lese aktuellen Wert
+    orr r1, r1, #RCGC_GPIO_PORT_F  // Setze Bit für Port F
+    str r1, [r0]                // Schreibe zurück
     
     // Kleine Verzögerung, damit Clock stabil ist
     nop
@@ -101,23 +101,23 @@ init_hardware:
     nop
     
     // Aktiviere Digital Enable (DEN) für Pins 1-3 (LEDs)
-    ldr r0, =GPIO_PORT_F_DEN_R  @ Lade Adresse des DEN Registers
-    ldr r1, [r0]                @ Lese aktuellen Wert
-    orr r1, r1, #(LED_R | LED_B | LED_G)  @ Aktiviere Pins 1, 2, 3
-    str r1, [r0]                @ Schreibe zurück
+    ldr r0, =GPIO_PORT_F_DEN_R  // Lade Adresse des DEN Registers
+    ldr r1, [r0]                // Lese aktuellen Wert
+    orr r1, r1, #(LED_R | LED_B | LED_G)  // Aktiviere Pins 1, 2, 3
+    str r1, [r0]                // Schreibe zurück
     
     // Setze Direction (DIR) für Pins 1-3 auf Output
-    ldr r0, =GPIO_PORT_F_DIR_R  @ Lade Adresse des DIR Registers
-    ldr r1, [r0]                @ Lese aktuellen Wert
-    orr r1, r1, #(LED_R | LED_B | LED_G)  @ Setze Pins 1, 2, 3 als Output
-    str r1, [r0]                @ Schreibe zurück
+    ldr r0, =GPIO_PORT_F_DIR_R  // Lade Adresse des DIR Registers
+    ldr r1, [r0]                // Lese aktuellen Wert
+    orr r1, r1, #(LED_R | LED_B | LED_G)  // Setze Pins 1, 2, 3 als Output
+    str r1, [r0]                // Schreibe zurück
     
     // Initialisiere LEDs im AUS-Zustand
-    ldr r0, =GPIO_PORT_F_DATA_R @ Lade Adresse des Data Registers
-    mov r1, #0                  @ Alle LEDs aus
-    str r1, [r0]                @ Schreibe 0
+    ldr r0, =GPIO_PORT_F_DATA_R // Lade Adresse des Data Registers
+    mov r1, #0                  // Alle LEDs aus
+    str r1, [r0]                // Schreibe 0
     
-    b main_loop                 @ Springe zur Hauptschleife
+    b main_loop                 // Springe zur Hauptschleife
 
 //=============================================================================
 // TEIL I - SysTick Handler
@@ -136,35 +136,35 @@ init_hardware:
 sys_tick_handler:
     // Register r0-r3, r12, LR, PC und CPSR werden bei Interrupts automatisch gesichert
     // Wir sichern zusätzlich r4-r11 (Arbeitsregister), um sicher zu gehen
-    push {r4-r11, lr}           @ Sichert alle verwendeten Register auf dem Stack
+    push {r4-r11, lr}           // Sichert alle verwendeten Register auf dem Stack
     
     //-------------------------------------------------------------------------
     // Millisekunden inkrementieren
     //-------------------------------------------------------------------------
-    ldr r0, =ms                 @ Lade Adresse der ms-Variable
-    ldr r1, [r0]                @ Lade aktuellen Wert von ms
-    add r1, r1, #1              @ ms++
+    ldr r0, =ms                 // Lade Adresse der ms-Variable
+    ldr r1, [r0]                // Lade aktuellen Wert von ms
+    add r1, r1, #1              // ms++
     
     // Prüfen ob 1000 ms erreicht (= 1 Sekunde)
     ldr r2, =1000
     cmp r1, r2
-    bge increase_second         @ Wenn ms >= 1000, springe zu increase_second
+    bge increase_second         // Wenn ms >= 1000, springe zu increase_second
     
     // Noch keine volle Sekunde erreicht
-    str r1, [r0]                @ Speichere neuen ms-Wert
-    pop {r4-r11, pc}            @ Stelle Register wieder her und kehre zurück
+    str r1, [r0]                // Speichere neuen ms-Wert
+    pop {r4-r11, pc}            // Stelle Register wieder her und kehre zurück
     
 increase_second:
     //-------------------------------------------------------------------------
     // Eine volle Sekunde ist vergangen
     //-------------------------------------------------------------------------
-    mov r1, #0                  @ Reset ms auf 0
-    str r1, [r0]                @ Speichere ms = 0
+    mov r1, #0                  // Reset ms auf 0
+    str r1, [r0]                // Speichere ms = 0
     
-    ldr r0, =s                  @ Lade Adresse der s-Variable
-    ldr r1, [r0]                @ Lade aktuellen Wert von s
-    add r1, r1, #1              @ s++
-    str r1, [r0]                @ Speichere neuen s-Wert
+    ldr r0, =s                  // Lade Adresse der s-Variable
+    ldr r1, [r0]                // Lade aktuellen Wert von s
+    add r1, r1, #1              // s++
+    str r1, [r0]                // Speichere neuen s-Wert
     
     //-------------------------------------------------------------------------
     // LED Toggle-Logik (0,5 Hz = LED wechselt jede Sekunde)
@@ -172,33 +172,33 @@ increase_second:
     // Prüfe ob s gerade oder ungerade ist
     // Gerade (Bit 0 = 0) -> LED AUS
     // Ungerade (Bit 0 = 1) -> LED AN
-    and r2, r1, #0x1            @ Extrahiere Bit 0 von s (gerade/ungerade)
+    and r2, r1, #0x1            // Extrahiere Bit 0 von s (gerade/ungerade)
     cmp r2, #0
-    beq led_off                 @ Wenn gerade (0), schalte LED aus
-    b led_on                    @ Wenn ungerade (1), schalte LED an
+    beq led_off                 // Wenn gerade (0), schalte LED aus
+    b led_on                    // Wenn ungerade (1), schalte LED an
 
 led_on:
     //-------------------------------------------------------------------------
     // LED einschalten (Grüne LED = BIT3 auf 1)
     //-------------------------------------------------------------------------
-    ldr r0, =GPIO_PORT_F_DATA_R @ Lade Adresse des GPIO Data Registers
-    ldr r1, [r0]                @ Lese aktuellen Wert
-    orr r1, r1, #LED_G          @ Setze LED_G (BIT3) auf 1
-    str r1, [r0]                @ Schreibe zurück
-    pop {r4-r11, pc}            @ Stelle Register wieder her und kehre zurück
+    ldr r0, =GPIO_PORT_F_DATA_R // Lade Adresse des GPIO Data Registers
+    ldr r1, [r0]                // Lese aktuellen Wert
+    orr r1, r1, #LED_G          // Setze LED_G (BIT3) auf 1
+    str r1, [r0]                // Schreibe zurück
+    pop {r4-r11, pc}            // Stelle Register wieder her und kehre zurück
 
 led_off:
     //-------------------------------------------------------------------------
     // LED ausschalten (Grüne LED = BIT3 auf 0)
     //-------------------------------------------------------------------------
-    ldr r0, =GPIO_PORT_F_DATA_R @ Lade Adresse des GPIO Data Registers
-    ldr r1, [r0]                @ Lese aktuellen Wert
-    bic r1, r1, #LED_G          @ Lösche LED_G (BIT3), setze auf 0
-    str r1, [r0]                @ Schreibe zurück
-    pop {r4-r11, pc}            @ Stelle Register wieder her und kehre zurück
+    ldr r0, =GPIO_PORT_F_DATA_R // Lade Adresse des GPIO Data Registers
+    ldr r1, [r0]                // Lese aktuellen Wert
+    bic r1, r1, #LED_G          // Lösche LED_G (BIT3), setze auf 0
+    str r1, [r0]                // Schreibe zurück
+    pop {r4-r11, pc}            // Stelle Register wieder her und kehre zurück
 
 main: 
-    b init_hardware             @ Springe zur Hardware-Initialisierung
+    b init_hardware             // Springe zur Hardware-Initialisierung
 
 //=============================================================================
 // main_loop: Hauptschleife des Programms
@@ -208,10 +208,12 @@ main:
 // In diesem Fall wird sys_tick_handler aufgerufen.
 //=============================================================================
 main_loop:
-    // b zeitmessung
+    b zeitmessung
+
+    // b test_push_and_pop
     
-    WFI                         @ Warte auf Interrupt (spart Energie)
-    b main_loop                 @ Wiederhole Schleife
+    WFI                         // Warte auf Interrupt (spart Energie)
+    b main_loop                 // Wiederhole Schleife
 
 
 //=============================================================================
@@ -251,12 +253,27 @@ main_loop:
 
 push_test:
     // Test-Code für TEIL II (mit Breakpoint verwenden)
-    mov r1, #0x11               @ Lade Test-Wert in r1
-    mov r2, #0x22               @ Lade Test-Wert in r2
-    push {r1, r2}               @ Push in einer Reihenfolge
-    push {r2, r1}               @ Push in anderer Reihenfolge (gleicher Maschinencode!)
+    mov r1, #0x11               // Lade Test-Wert in r1
+    mov r2, #0x22               // Lade Test-Wert in r2
+    push {r1, r2}               // Push in einer Reihenfolge
+    push {r2, r1}               // Push in anderer Reihenfolge (gleicher Maschinencode!)
     // Setze hier Breakpoint und untersuche Stack im Memory-Reiter!
 
+test_push_and_pop:
+    // Test-Code für TEIL II (mit Breakpoint verwenden)
+    mov r1, #0x11               // Lade Test-Wert in r1
+    mov r2, #0x22               // Lade Test-Wert in r2
+    push {r1, r2}               // Push in einer Reihenfolge
+    push {r2, r1}               // Push in anderer Reihenfolge (gleicher Maschinencode!)
+
+    BKPT #0                     // Breakpoint hier setzen
+
+    // Setze hier Breakpoint und untersuche Stack im Memory-Reiter!
+    pop {r3, r4}                // Pop Werte zurück (um Stack sauber zu halten)
+    pop {r6}                    // Pop Werte zurück
+
+    mov r1, #0x11               // Lade Test-Wert in r1
+    mov r2, #0x22               // Lade Test-Wert in r2
 
 //=============================================================================
 // TEIL III - CPI Messung (Cycles Per Instruction)
@@ -280,37 +297,41 @@ zeitmessung:
     // Messung 1: nop-Befehl
     //-------------------------------------------------------------------------
     // Erwartung: 1 Zyklus (nop = No Operation, einfachster Befehl)
-    ldr r5, =ST_CURRENT_R       @ Lade Adresse von CURRENT-Register
-    ldr r3, [r5]                @ Lese Startwert (vorher)
+    ldr r5, =ST_CURRENT_R       // Lade Adresse von CURRENT-Register
+    ldr r3, [r5]                // Lese Startwert (vorher)
     
-    nop                         @ Zu messender Befehl
+    nop                         // Zu messender Befehl
     
-    ldr r4, [r5]                @ Lese Endwert (nachher)
-    sub r6, r3, r4              @ Berechne Differenz (Zyklen)
+    ldr r4, [r5]                // Lese Endwert (nachher)
+    sub r6, r3, r4              // Berechne Differenz (Zyklen)
     // Ergebnis in r6: ca. 1 Zyklus
     
     //-------------------------------------------------------------------------
     // Messung 2: ldr r0, [sp] - Load aus Stack
     //-------------------------------------------------------------------------
     // Erwartung: 2 Zyklen (Speicherzugriff benötigt mehr Zeit)
-    ldr r3, [r5]                @ Startwert
+    ldr r3, [r5]                // Startwert
     
-    ldr r0, [sp]                @ Zu messender Befehl
+    ldr r0, [sp]                // Zu messender Befehl
     
-    ldr r4, [r5]                @ Endwert
-    sub r7, r3, r4              @ Differenz
+    ldr r4, [r5]                // Endwert
+    sub r7, r3, r4              // Differenz
+
+    BKPT #0                     // Breakpoint hier setzen, um Ergebnis zu sehen
     // Ergebnis in r7: ca. 2 Zyklen
     
     //-------------------------------------------------------------------------
     // Messung 3: str r0, [sp, #-4] - Store mit Offset (ohne Writeback)
     //-------------------------------------------------------------------------
     // Erwartung: 2 Zyklen (Speicherzugriff)
-    ldr r3, [r5]                @ Startwert
+    ldr r3, [r5]                // Startwert
     
-    str r0, [sp, #-4]           @ Zu messender Befehl (SP bleibt unverändert)
+    str r0, [sp, #-4]           // Zu messender Befehl (SP bleibt unverändert)
     
-    ldr r4, [r5]                @ Endwert
-    sub r8, r3, r4              @ Differenz
+    ldr r4, [r5]                // Endwert
+    sub r8, r3, r4              // Differenz
+    
+    BKPT #0                     // Breakpoint hier setzen, um Ergebnis zu sehen
     // Ergebnis in r8: ca. 2 Zyklen
     
     //-------------------------------------------------------------------------
@@ -319,12 +340,12 @@ zeitmessung:
     // Erwartung: 2+ Zyklen (Speicherzugriff + SP-Update)
     // !!!ACHTUNG!!!!: Dieser Befehl dauert LÄNGER als str ohne "!"
     // Grund: Writeback (!) bedeutet SP wird aktualisiert -> zusätzliche Operation
-    ldr r3, [r5]                @ Startwert
+    ldr r3, [r5]                // Startwert
     
-    str r0, [sp, #-4]!          @ Zu messender Befehl (SP = SP - 4)
+    str r0, [sp, #-4]!          // Zu messender Befehl (SP = SP - 4)
     
-    ldr r4, [r5]                @ Endwert
-    sub r9, r3, r4              @ Differenz
+    ldr r4, [r5]                // Endwert
+    sub r9, r3, r4              // Differenz
     // Ergebnis in r9: ca. 2-4 Zyklen (länger wegen Writeback!)
     
     //-------------------------------------------------------------------------
@@ -339,39 +360,39 @@ zeitmessung:
     // Messung 5: mul - Multiplikation
     //-------------------------------------------------------------------------
     // Erwartung: 1-3 Zyklen auf Cortex-M4 (abhängig vom Prozessor)
-    ldr r1, =0x2                @ Lade Operand
-    ldr r3, [r5]                @ Startwert
+    ldr r1, =0x2                // Lade Operand
+    ldr r3, [r5]                // Startwert
     
-    mul r0, r1, r1              @ Zu messender Befehl (r0 = r1 * r1)
+    mul r0, r1, r1              // Zu messender Befehl (r0 = r1 * r1)
     
-    ldr r4, [r5]                @ Endwert
-    sub r10, r3, r4             @ Differenz
+    ldr r4, [r5]                // Endwert
+    sub r10, r3, r4             // Differenz
     // Ergebnis in r10: ca. 1-3 Zyklen
     
     //-------------------------------------------------------------------------
     // Messung 6: sdiv - Vorzeichenbehaftete Division
     //-------------------------------------------------------------------------
     // Erwartung: 2-12 Zyklen (Division ist VIEL langsamer als Multiplikation!)
-    ldr r1, =0x100              @ Lade Operand
-    ldr r2, =0x2                @ Divisor
-    ldr r3, [r5]                @ Startwert
+    ldr r1, =0x100              // Lade Operand
+    ldr r2, =0x2                // Divisor
+    ldr r3, [r5]                // Startwert
     
-    sdiv r0, r1, r2             @ Zu messender Befehl (r0 = r1 / r2)
+    sdiv r0, r1, r2             // Zu messender Befehl (r0 = r1 / r2)
     
-    ldr r4, [r5]                @ Endwert
-    sub r11, r3, r4             @ Differenz
+    ldr r4, [r5]                // Endwert
+    sub r11, r3, r4             // Differenz
     // Ergebnis in r11: ca. 2-12 Zyklen (VIEL langsamer als mul!)
     
     //-------------------------------------------------------------------------
     // Messung 7: sdiv mit getauschten Operanden
     //-------------------------------------------------------------------------
-    ldr r2, =0x100              @ Lade Operand (getauscht)
-    ldr r1, =0x2                @ Divisor (getauscht)
-    ldr r3, [r5]                @ Startwert
+    ldr r2, =0x100              // Lade Operand (getauscht)
+    ldr r1, =0x2                // Divisor (getauscht)
+    ldr r3, [r5]                // Startwert
     
-    sdiv r0, r2, r1             @ Zu messender Befehl
+    sdiv r0, r2, r1             // Zu messender Befehl
     
-    ldr r4, [r5]                @ Endwert
+    ldr r4, [r5]                // Endwert
     // Ergebnis: Ähnlich wie vorher, Operandenreihenfolge ändert Zeit kaum
     
     //-------------------------------------------------------------------------
@@ -381,32 +402,32 @@ zeitmessung:
     
     // push mit 1 Register
     ldr r1, =0x11
-    ldr r3, [r5]                @ Startwert
+    ldr r3, [r5]                // Startwert
     
-    push {r1}                   @ 1 Register
+    push {r1}                   // 1 Register
     
-    ldr r4, [r5]                @ Endwert
+    ldr r4, [r5]                // Endwert
     // Erwartung: ca. 1-2 Zyklen
     
     // push mit 2 Registern
     ldr r1, =0x11
     ldr r2, =0x22
-    ldr r3, [r5]                @ Startwert
+    ldr r3, [r5]                // Startwert
     
-    push {r1, r2}               @ 2 Register
+    push {r1, r2}               // 2 Register
     
-    ldr r4, [r5]                @ Endwert
+    ldr r4, [r5]                // Endwert
     // Erwartung: ca. 2-3 Zyklen
     
     // push mit 3 Registern
     ldr r1, =0x11
     ldr r2, =0x22
     ldr r3, =0x33
-    ldr r0, [r5]                @ Startwert (nicht r3, das wird gepusht!)
+    ldr r0, [r5]                // Startwert (nicht r3, das wird gepusht!)
     
-    push {r1, r2, r3}           @ 3 Register
+    push {r1, r2, r3}           // 3 Register
     
-    ldr r4, [r5]                @ Endwert
+    ldr r4, [r5]                // Endwert
     // Erwartung: ca. 3-4 Zyklen
     
     //-------------------------------------------------------------------------
@@ -414,5 +435,5 @@ zeitmessung:
     // Jedes zusätzliche Register = ca. +1 Zyklus Speicherzugriff
     //-------------------------------------------------------------------------
     
-    b zeitmessung               @ Endlosschleife für kontinuierliche Messung
+    b zeitmessung               // Endlosschleife für kontinuierliche Messung
 .end
