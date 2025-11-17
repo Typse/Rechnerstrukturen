@@ -1,0 +1,153 @@
+.section .data
+.syntax unified
+.thumb
+
+// definiert BIT0 bis BIT31
+.altmacro
+.macro define_bit a
+    .equ BIT\a, (1 << \a)
+.endm
+
+.set i, 0
+.rept 32
+    define_bit %i
+    .set i,i+1
+.endr
+
+.equ RCGC_GPIO_R, 0x400FE608
+.equ RCGC_GPIO_PORT_F, BIT5
+
+.equ LED_R, BIT1
+.equ LED_G, BIT3
+
+.equ GPIO_PORTF_BASE,  0x40025000
+.equ GPIO_DATA_R,       0x3FC
+.equ GPIO_DIR_R,        0x400
+.equ GPIO_DEN_R,        0x51C
+.equ GPIO_PORTF_DATA_R, GPIO_PORTF_BASE + GPIO_DATA_R
+.equ GPIO_PORTF_DIR_R,  GPIO_PORTF_BASE + GPIO_DIR_R
+.equ GPIO_PORTF_DEN_R,  GPIO_PORTF_BASE + GPIO_DEN_R
+
+.equ ST_BASE,           0xE000E000
+.equ ST_CTRL_R,         ST_BASE + 0x10
+.equ ST_RELOAD_R,       ST_BASE + 0x14
+.equ ST_CURRENT_R,      ST_BASE + 0x18
+.equ ST_CTRL_ENABLE,    BIT0
+.equ ST_CTRL_INTEN,     BIT1
+.equ ST_CTRL_CLK_SRC,   BIT2
+
+s: .word 0      // Sekunden seit Start
+ms: .word 0     // Millisekunden in aktueller Sekunde
+
+.section .text
+.global main
+.global sys_tick_handler
+.align
+
+init_hardware:
+    // 1. Clock für GPIO Port F aktivieren
+    LDR r0, =RCGC_GPIO_R      // Lade Adresse des Clock Control Registers
+    LDR r1, [r0]              // Lade aktuellen Wert des Registers
+    ORR r1, r1, #RCGC_GPIO_PORT_F // Setze Bit 5 für Port F
+    STR r1, [r0]              // Speichere zurück ins Register
+    
+    nop
+    nop // Kurze Verzögerung für Clock-Stabilisierung
+    nop
+    
+    // 3. GPIO Pins als AUSGANG konfigurieren
+    LDR r0, =GPIO_PORTF_DIR_R // Lade Adresse des Direction Registers
+    LDR r1, [r0]              // Lade aktuellen Wert
+    ORR r1, r1, #LED_R | LED_G // Setze Bits für rote und grüne LED = Ausgang
+    STR r1, [r0]              // Speichere zurück
+    
+    // 4. Digitale Funktion für LEDs aktivieren
+    LDR r0, =GPIO_PORTF_DEN_R // Lade Adresse des Digital Enable Registers
+    LDR r1, [r0]              // Lade aktuellen Wert
+    ORR r1, r1, #LED_R | LED_G // Setze Bits für digitale Funktion
+    STR r1, [r0]              // Speichere zurück
+    
+    // 5. LEDs initial AUSSCHALTEN
+    LDR r0, =GPIO_PORTF_DATA_R // Lade Adresse des Data Registers
+    LDR r1, [r0]              // Lade aktuellen Wert
+    BIC r1, r1, #LED_R | LED_G // Lösche Bits für beide LEDs = AUS
+    STR r1, [r0]              // Speichere zurück
+    
+    // 6. SysTick Timer konfigurieren
+    LDR r0, =ST_RELOAD_R      // Lade Adresse des Reload Registers
+    LDR r1, =15999            // 16MHz / 1000 = 16000, minus 1 = 15999
+    STR r1, [r0]              // Setze Reload Wert für 1ms
+    
+    // 7. SysTick Current Wert zurücksetzen
+    LDR r0, =ST_CURRENT_R     // Lade Adresse des Current Registers
+    MOV r1, #0                // Setze r1 auf 0
+    STR r1, [r0]              // Setze Current Wert auf 0
+    
+    // 8. SysTick Control: Enable + Interrupt + System Clock
+    LDR r0, =ST_CTRL_R        // Lade Adresse des Control Registers
+    MOV r1, #0x7              // Setze Bits: Enable(1) + Interrupt(1) + Clock Source(1)
+    STR r1, [r0]              // Aktiviere SysTick
+    
+    b main_loop
+
+.thumb_func
+sys_tick_handler:
+    //  Register sichern da asynchroner Aufruf!
+    // PUSH {r0, r1, lr}         // Sichere r0, r1 und lr (Rückkehradresse)
+    PUSH {r1, r0, lr}
+    
+    // 1. Millisekunden erhöhen
+    LDR r0, =ms               // Lade Adresse der ms Variable
+    LDR r1, [r0]              // Lade Wert von ms in r1
+    ADD r1, r1, #1            // Erhöhe ms um 1
+    STR r1, [r0]              // Speichere neuen Wert zurück
+    
+    // 2. Prüfen ob 1000ms (1 Sekunde) vergangen sind
+    CMP r1, #1000             // Vergleiche ms mit 1000
+    BNE exit_routine          // Wenn nicht gleich, springe zum Ende
+    
+    // 3. Sekunden erhöhen (1 Sekunde ist voll)
+    LDR r0, =s                // Lade Adresse der s Variable
+    LDR r1, [r0]              // Lade Wert von s in r1
+    ADD r1, r1, #1            // Erhöhe s um 1
+    STR r1, [r0]              // Speichere neuen Wert zurück
+    
+    // 4. LED mit 0.5Hz blinken lassen
+    LDR r0, =GPIO_PORTF_DATA_R // Lade Adresse des Data Registers
+    LDR r1, [r0]              // Lade aktuellen LED-Zustand
+    EOR r1, r1, #LED_R | LED_G // XOR mit LED-Bits = Umschalten beider LEDs
+    STR r1, [r0]              // Speichere neuen LED-Zustand
+    
+    // 5. Millisekunden zurücksetzen für nächste Sekunde
+    LDR r0, =ms               // Lade Adresse der ms Variable
+    MOV r1, #0                // Setze r1 auf 0
+    STR r1, [r0]              // Setze ms auf 0 zurück
+
+exit_routine:
+    // Register wiederherstellen
+    POP {r0, r1, lr}          // Stelle r0, r1 und lr wieder her
+    bx lr                     // Zurück zur Aufrufstelle
+
+main:
+    // Variablen initialisieren
+    LDR r0, =s                // Lade Adresse der s Variable
+    MOV r1, #0                // Setze r1 auf 0
+    STR r1, [r0]              // Setze s auf 0
+
+    LDR r0, =ms               // Lade Adresse der ms Variable
+    MOV r1, #0                // Setze r1 auf 0
+    STR r1, [r0]              // Setze ms auf 0
+
+    b init_hardware           // Springe zur Hardware-Initialisierung
+
+main_loop:
+
+    WFI
+    b main_loop
+
+
+task2:
+
+
+
+.end

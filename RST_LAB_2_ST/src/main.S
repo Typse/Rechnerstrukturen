@@ -81,9 +81,9 @@ init_hardware:
     // Konfiguriere STCTRL Register
     // - BIT0 (ENABLE): SysTick aktivieren
     // - BIT2 (CLK_SRC): Systemtakt als Quelle (16 MHz)
-    // - BIT1 (INTEN): Interrupt NICHT aktiviert (wir pollen)
+    // - BIT1 (INTEN): Interrupt aktivieren
     ldr r0, =ST_CTRL_R          @ Lade Adresse des STCTRL-Registers
-    ldr r1, =(ST_CTRL_ENABLE | ST_CTRL_CLK_SRC)  @ Enable + CLK_SRC setzen
+    ldr r1, =(ST_CTRL_ENABLE | ST_CTRL_CLK_SRC | ST_CTRL_INTEN) @ Enable + CLK_SRC + Interrupt
     str r1, [r0]                @ Schreibe Konfiguration
     
     //-------------------------------------------------------------------------
@@ -208,18 +208,9 @@ main:
 // In diesem Fall wird sys_tick_handler aufgerufen.
 //=============================================================================
 main_loop:
-    // Kommentiere die nächste Zeile aus, um TEIL III (Zeitmessung) zu aktivieren
     // b zeitmessung
     
-    //-------------------------------------------------------------------------
-    // SysTick Polling: Prüfe COUNT-Flag (BIT16 in ST_CTRL)
-    //-------------------------------------------------------------------------
-    ldr r1, =ST_CTRL_R          @ Lade Adresse des SysTick Control Registers
-    ldr r0, [r1]                @ Lese aktuellen Wert
-    ands r0, r0, #ST_CTRL_COUNT @ Prüfe COUNT-Flag (BIT16)
-                                @ ands setzt Zero-Flag wenn Ergebnis = 0
-    bne sys_tick_handler        @ Wenn COUNT-Flag gesetzt (!=0), rufe Handler auf
-    
+    WFI                         @ Warte auf Interrupt (spart Energie)
     b main_loop                 @ Wiederhole Schleife
 
 
@@ -326,7 +317,7 @@ zeitmessung:
     // Messung 4: str r0, [sp, #-4]! - Store mit Writeback (!)
     //-------------------------------------------------------------------------
     // Erwartung: 2+ Zyklen (Speicherzugriff + SP-Update)
-    // ACHTUNG: Dieser Befehl dauert LÄNGER als str ohne "!"
+    // !!!ACHTUNG!!!!: Dieser Befehl dauert LÄNGER als str ohne "!"
     // Grund: Writeback (!) bedeutet SP wird aktualisiert -> zusätzliche Operation
     ldr r3, [r5]                @ Startwert
     
