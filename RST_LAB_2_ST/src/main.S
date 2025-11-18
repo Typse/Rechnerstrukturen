@@ -58,20 +58,12 @@ ms:
 .global sys_tick_handler
 .align
 
-//=============================================================================
-// init_hardware: Initialisierung von SysTick und GPIO Port F
-//=============================================================================
+
 init_hardware:
-    //-------------------------------------------------------------------------
-    // SysTick Konfiguration für 1ms Interrupt
-    //-------------------------------------------------------------------------
-    // Systemtakt: 16 MHz = 16.000.000 Hz
-    // Für 1ms Tick: 16.000.000 Hz / 1000 = 16.000 Takte pro ms
-    // RELOAD-Wert: 16.000 - 1 = 15.999 (da Counter bei 0 startet)
     
-    ldr r0, =ST_RELOAD_R        // Lade Adresse des STRELOAD-Registers
-    ldr r2, =15999              // Lade Reload-Wert für 1ms bei 16MHz
-    str r2, [r0]                // Schreibe Reload-Wert
+    ldr r0, =ST_RELOAD_R
+    ldr r2, =15999
+    str r2, [r0]      
     
     // Clear STCURRENT Register (Reset des Counters)
     ldr r1, =ST_CURRENT_R       // Lade Adresse des STCURRENT-Registers
@@ -148,12 +140,11 @@ sys_tick_handler:
     // Prüfen ob 1000 ms erreicht (= 1 Sekunde)
     ldr r2, =1000
     cmp r1, r2
-    bge increase_second         // Wenn ms >= 1000, springe zu increase_second
+    beq increase_second         // Wenn ms = 1000, springe zu increase_second
     
     // Noch keine volle Sekunde erreicht
     str r1, [r0]                // Speichere neuen ms-Wert
     pop {r4-r11, pc}            // Stelle Register wieder her und kehre zurück
-    
 increase_second:
     //-------------------------------------------------------------------------
     // Eine volle Sekunde ist vergangen
@@ -208,10 +199,13 @@ main:
 // In diesem Fall wird sys_tick_handler aufgerufen.
 //=============================================================================
 main_loop:
-    b zeitmessung
+    // b zeitmessung
 
     // b test_push_and_pop
     
+    // tst r0, #ST_CTRL_COUNT   // Prüfe ob COUNT-Flag gesetzt ist
+    // bne sys_tick_handler
+
     WFI                         // Warte auf Interrupt (spart Energie)
     b main_loop                 // Wiederhole Schleife
 
@@ -251,18 +245,12 @@ main_loop:
 //
 //=============================================================================
 
-push_test:
-    // Test-Code für TEIL II (mit Breakpoint verwenden)
-    mov r1, #0x11               // Lade Test-Wert in r1
-    mov r2, #0x22               // Lade Test-Wert in r2
-    push {r1, r2}               // Push in einer Reihenfolge
-    push {r2, r1}               // Push in anderer Reihenfolge (gleicher Maschinencode!)
-    // Setze hier Breakpoint und untersuche Stack im Memory-Reiter!
-
 test_push_and_pop:
     // Test-Code für TEIL II (mit Breakpoint verwenden)
     mov r1, #0x11               // Lade Test-Wert in r1
     mov r2, #0x22               // Lade Test-Wert in r2
+    BKPT #0                     // Breakpoint hier setzen
+    
     push {r1, r2}               // Push in einer Reihenfolge
     push {r2, r1}               // Push in anderer Reihenfolge (gleicher Maschinencode!)
 
@@ -298,13 +286,26 @@ zeitmessung:
     //-------------------------------------------------------------------------
     // Erwartung: 1 Zyklus (nop = No Operation, einfachster Befehl)
     ldr r5, =ST_CURRENT_R       // Lade Adresse von CURRENT-Register
+    //-------------------------------------------------------------------------
+    // Overhead Messung (Lesezeit der ldr Befehle)
+    //-------------------------------------------------------------------------
+    ldr r3, [r5]                // Lese Startwert (vorher
+    ldr r4, [r5]                // Lese Endwert (nachher)
+    sub r12, r3, r4              // Berechne Differenz (Overhead)
+
     ldr r3, [r5]                // Lese Startwert (vorher)
     
     nop                         // Zu messender Befehl
-    
+    nop
+    nop
+    nop
+    nop
+
     ldr r4, [r5]                // Lese Endwert (nachher)
     sub r6, r3, r4              // Berechne Differenz (Zyklen)
-    // Ergebnis in r6: ca. 1 Zyklus
+    sub r6, r6, r12             // Korrigiere um Overhead
+    // Ergebnis in r6: ca. 1 Zyklus pro nop + Overhead 1-2 ldr cycles
+    // also ca. 6-7 Zyklen für 5 nops insgesamt
     
     //-------------------------------------------------------------------------
     // Messung 2: ldr r0, [sp] - Load aus Stack
@@ -316,9 +317,9 @@ zeitmessung:
     
     ldr r4, [r5]                // Endwert
     sub r7, r3, r4              // Differenz
+    sub r7, r7, r12             // Korrigiere um Overhead
 
-    BKPT #0                     // Breakpoint hier setzen, um Ergebnis zu sehen
-    // Ergebnis in r7: ca. 2 Zyklen
+    // Ergebnis in r7: 3 Zyklen
     
     //-------------------------------------------------------------------------
     // Messung 3: str r0, [sp, #-4] - Store mit Offset (ohne Writeback)
@@ -330,9 +331,9 @@ zeitmessung:
     
     ldr r4, [r5]                // Endwert
     sub r8, r3, r4              // Differenz
-    
-    BKPT #0                     // Breakpoint hier setzen, um Ergebnis zu sehen
-    // Ergebnis in r8: ca. 2 Zyklen
+    sub r8, r8, r12             // Korrigiere um Overhead
+
+    // Ergebnis in r8: 3 Zyklen
     
     //-------------------------------------------------------------------------
     // Messung 4: str r0, [sp, #-4]! - Store mit Writeback (!)
@@ -346,7 +347,9 @@ zeitmessung:
     
     ldr r4, [r5]                // Endwert
     sub r9, r3, r4              // Differenz
-    // Ergebnis in r9: ca. 2-4 Zyklen (länger wegen Writeback!)
+    sub r9, r9, r12             // Korrigiere um Overhead
+
+    // Ergebnis in r9: ca. 3 Zyklen (länger wegen Writeback!) ((aber es ist nicht länger? wieso?))
     
     //-------------------------------------------------------------------------
     // ERKLÄRUNG: Warum ist str mit "!" langsamer?
@@ -367,7 +370,9 @@ zeitmessung:
     
     ldr r4, [r5]                // Endwert
     sub r10, r3, r4             // Differenz
-    // Ergebnis in r10: ca. 1-3 Zyklen
+    sub r10, r10, r12           // Korrigiere um Overhead
+
+    // Ergebnis in r10: 2 Zyklen
     
     //-------------------------------------------------------------------------
     // Messung 6: sdiv - Vorzeichenbehaftete Division
@@ -381,7 +386,9 @@ zeitmessung:
     
     ldr r4, [r5]                // Endwert
     sub r11, r3, r4             // Differenz
-    // Ergebnis in r11: ca. 2-12 Zyklen (VIEL langsamer als mul!)
+    sub r11, r11, r12           // Korrigiere um Overhead
+
+    // Ergebnis in r11: 7 Zyklen (VIEL langsamer als mul!)
     
     //-------------------------------------------------------------------------
     // Messung 7: sdiv mit getauschten Operanden
@@ -393,7 +400,11 @@ zeitmessung:
     sdiv r0, r2, r1             // Zu messender Befehl
     
     ldr r4, [r5]                // Endwert
-    // Ergebnis: Ähnlich wie vorher, Operandenreihenfolge ändert Zeit kaum
+
+    sub r0, r3, r4             // Differenz !!!!R0 jetzt weil overhead in r12!!!!
+    sub r0, r0, r12           // Korrigiere um Overhead
+    BKPT #0
+    // Ergebnis: gleiche wie vorher: 7 Zyklen
     
     //-------------------------------------------------------------------------
     // Messung 8: push mit verschiedener Anzahl Register
@@ -407,7 +418,11 @@ zeitmessung:
     push {r1}                   // 1 Register
     
     ldr r4, [r5]                // Endwert
+    sub r0, r3, r4              // Differenzsu
+    sub r0, r0, r12             // Korrigiere um Overhead
+    BKPT #0 
     // Erwartung: ca. 1-2 Zyklen
+    // Ergebnis: 3 Zyklen
     
     // push mit 2 Registern
     ldr r1, =0x11
@@ -417,7 +432,11 @@ zeitmessung:
     push {r1, r2}               // 2 Register
     
     ldr r4, [r5]                // Endwert
+    sub r0, r3, r4              // Differenz
+    sub r0, r0, r12             // Korrigiere um Overhead
+    BKPT #0 
     // Erwartung: ca. 2-3 Zyklen
+    // Ergebnis: 4 Zyklen
     
     // push mit 3 Registern
     ldr r1, =0x11
@@ -428,11 +447,15 @@ zeitmessung:
     push {r1, r2, r3}           // 3 Register
     
     ldr r4, [r5]                // Endwert
+    sub r0, r0, r4              // Differenz
+    sub r0, r0, r12             // Korrigiere um Overhead
+    BKPT #0 
     // Erwartung: ca. 3-4 Zyklen
+    // Ergebnis: 5 Zyklen
     
     //-------------------------------------------------------------------------
     // BEOBACHTUNG: push-Zeit steigt mit Anzahl der Register
-    // Jedes zusätzliche Register = ca. +1 Zyklus Speicherzugriff
+    // Jedes zusätzliche Register = +1 Zyklus Speicherzugriff
     //-------------------------------------------------------------------------
     
     b zeitmessung               // Endlosschleife für kontinuierliche Messung
